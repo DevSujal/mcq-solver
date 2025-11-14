@@ -2,7 +2,7 @@
   "name": "mcq-ocr-gemini-api",
   "version": "0.1.0",
   "description": "API that accepts an image, uses OCR.space and multiple models to answer MCQs",
-  "main": "src/server.js",
+  "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "nodemon index.js",
