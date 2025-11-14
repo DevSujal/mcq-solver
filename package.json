@@ -1,0 +1,32 @@
+{
+  "name": "mcq-ocr-gemini-api",
+  "version": "0.1.0",
+  "description": "API that accepts an image, uses OCR.space and multiple models to answer MCQs",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "nodemon index.js",
+    "dev": "nodemon --require dotenv/config index.js",
+    "test": "node tests/run-tests.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@cerebras/cerebras_cloud_sdk": "^1.0.0",
+    "@google/genai": "^1.29.1",
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.13.2",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "langchain": "^1.0.0",
+    "mime": "^3.0.0",
+    "multer": "^1.4.5-lts.1",
+    "pino": "^8.18.0",
+    "pino-pretty": "^13.1.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}
