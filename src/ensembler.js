@@ -1,12 +1,53 @@
 import { MODEL_WEIGHTS } from './config.js';
 const DEFAULT_WEIGHTS = MODEL_WEIGHTS;
 
+// Create a normalizer function that maps any label variant to the canonical label
+function createLabelNormalizer(options) {
+  // Build a map of all possible label variations to the canonical label
+  const labelMap = new Map();
+  
+  for (const option of options) {
+    const canonicalLabel = option.label;
+    const text = option.text?.toLowerCase().trim();
+    
+    // Map the canonical label to itself
+    labelMap.set(canonicalLabel, canonicalLabel);
+    labelMap.set(canonicalLabel.toLowerCase(), canonicalLabel);
+    
+    // Map common variations (e.g., if canonical is "1", also accept "A", "a", etc.)
+    // Map by index position (1st option can be "1", "A", "a", etc.)
+    const index = options.indexOf(option);
+    const numberLabel = String(index + 1);
+    const letterLabel = String.fromCharCode(65 + index); // A, B, C, ...
+    const lowerLetterLabel = String.fromCharCode(97 + index); // a, b, c, ...
+    
+    labelMap.set(numberLabel, canonicalLabel);
+    labelMap.set(letterLabel, canonicalLabel);
+    labelMap.set(lowerLetterLabel, canonicalLabel);
+    
+    // Also map by text content for robustness
+    if (text) {
+      labelMap.set(text, canonicalLabel);
+    }
+  }
+  
+  // Return a function that normalizes any label to the canonical form
+  return (label) => {
+    if (!label) return null;
+    const normalized = labelMap.get(label) || labelMap.get(label.toLowerCase()) || labelMap.get(label.trim());
+    return normalized || label; // fallback to original if no match
+  };
+}
+
 export function ensembleResponses(question, modelResponses, weights = DEFAULT_WEIGHTS, threshold = 0.25) {
   // modelResponses: [{model, parsed: {selected_options:[], confidence:...}}, ...]
   const optionScores = {}; // { 'A': total_weight }
   const perModel = [];
   let totalModelWeight = 0;
   let weightedConfidenceSum = 0;
+  
+  // Create a map to normalize option labels: map all possible labels to the canonical label from question.options
+  const labelNormalizer = createLabelNormalizer(question.options);
   
   for (const r of modelResponses) {
     if (r.error) {
@@ -24,10 +65,18 @@ export function ensembleResponses(question, modelResponses, weights = DEFAULT_WE
     totalModelWeight += w;
     weightedConfidenceSum += w * confidence;
     
+    // Normalize each selected option before scoring
+    const normalizedOptions = [];
     for (const opt of parsed.selected_options || []) {
-      optionScores[opt] = (optionScores[opt] || 0) + w;
+      const normalized = labelNormalizer(opt);
+      if (normalized) {
+        optionScores[normalized] = (optionScores[normalized] || 0) + w;
+        normalizedOptions.push(normalized);
+      } else {
+        console.log(`⚠ Could not normalize option "${opt}" for model ${r.model}`);
+      }
     }
-    perModel.push({ model: r.model, selected_options: parsed.selected_options || [], confidence, reasoning: parsed.reasoning || '' });
+    perModel.push({ model: r.model, selected_options: normalizedOptions, confidence, reasoning: parsed.reasoning || '' });
   }
 
   // Select options that have enough weighted support

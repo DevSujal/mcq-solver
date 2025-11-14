@@ -55,7 +55,12 @@ app.post('/api/solve-mcqs', upload.single('image'), async (req, res) => {
 
 app.get('/api/health', async (req, res) => {
   try {
-    res.json({ ok: true, gemini_key_present: !!process.env.GEMINI_API_KEY, cerebras_key_present: !!process.env.CEREBRAS_API_KEY });
+    res.json({ 
+      ok: true, 
+      gemini_key_present: !!process.env.GEMINI_API_KEY, 
+      cerebras_key_present: !!process.env.CEREBRAS_API_KEY,
+      ocr_fallback_available: !!process.env.OCR_API_KEY
+    });
   } catch (e) {
     res.json({ ok: false, error: e.message });
   }
