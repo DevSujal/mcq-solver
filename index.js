@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 import express from 'express';
 import multer from 'multer';
+import axios from 'axios';
 import { ImageRequestSchema } from './src/validators.js';
 import { processImage } from './src/pipeline.js';
 import { errorShort } from './src/logger.js';
@@ -58,18 +59,27 @@ async function appwriteMain() {
     }
 
     let imageBuffer = null;
-    if (payload.image_base64) {
-      const match = payload.image_base64.match(/^data:(.+);base64,(.+)$/);
-      if (!match) {
-        console.error('bad_image');
-        console.log(JSON.stringify({ error: 'image_base64 must be a data URL' }));
-        process.exit(1);
-        return;
+    try {
+      // Accept data URL: data:image/png;base64,...
+      if (payload.image_base64) {
+        const match = String(payload.image_base64).match(/^data:(.+);base64,(.+)$/);
+        if (match) imageBuffer = Buffer.from(match[2], 'base64');
+        else imageBuffer = Buffer.from(String(payload.image_base64), 'base64'); // accept raw base64
+      } else if (payload.image) { // generic field
+        imageBuffer = Buffer.from(String(payload.image), 'base64');
+      } else if (payload.image_url) {
+        const resp = await axios.get(payload.image_url, { responseType: 'arraybuffer' });
+        imageBuffer = Buffer.from(resp.data);
       }
-      imageBuffer = Buffer.from(match[2], 'base64');
-    } else {
+    } catch (e) {
+      console.error('bad_image_parse', e?.message || String(e));
+      console.log(JSON.stringify({ error: 'invalid_image', message: e?.message || String(e) }));
+      process.exit(1);
+      return;
+    }
+    if (!imageBuffer) {
       console.error('bad_request: no image provided');
-      console.log(JSON.stringify({ error: 'image is required in payload' }));
+      console.log(JSON.stringify({ error: 'image is required in payload (image_base64|image|image_url)' }));
       process.exit(1);
       return;
     }
@@ -79,13 +89,26 @@ async function appwriteMain() {
 
     const reqId = process.env.APPWRITE_FUNCTION_EXECUTION_ID || Math.floor(Math.random() * 1000000);
 
+    // Check for required API keys (informative - not mandatory for all flows)
+    const missingKeys = [];
+    if (!process.env.OCR_API_KEY) missingKeys.push('OCR_API_KEY');
+    if (!process.env.CEREBRAS_API_KEY && !process.env.CEREBRAS_LLAMA) missingKeys.push('CEREBRAS_API_KEY');
+    if (!process.env.GEMINI_API_KEY) missingKeys.push('GEMINI_API_KEY');
+    if (missingKeys.length === 3) {
+      console.error('missing_api_keys', missingKeys);
+      console.log(JSON.stringify({ error: 'missing_api_keys', message: `Missing keys: ${missingKeys.join(', ')}` }));
+      process.exit(1);
+      return;
+    }
+
     try {
       const result = await processImage({ imageBuffer, debug, requestedModels, reqId });
       // Print questions array as JSON
       console.log(JSON.stringify(result.questions));
       process.exit(0);
     } catch (err) {
-      console.error('internal_error', err?.message || String(err));
+      // Detailed error output for Appwrite logs
+      console.error(JSON.stringify({ level: 'error', stage: 'pipeline', message: err?.message || String(err), stack: err?.stack || null }));
       console.log(JSON.stringify({ error: err?.message || 'server_error' }));
       process.exit(1);
     }

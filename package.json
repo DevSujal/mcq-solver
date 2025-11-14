@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node --require dotenv/config index.js",
     "dev": "nodemon --require dotenv/config index.js",
+    "build": "echo \"no build step\"",
     "test": "node tests/run-tests.js"
   },
   "keywords": [],
@@ -28,5 +29,9 @@
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
+  }
+  ,
+  "engines": {
+    "node": ">=20"
   }
 }
