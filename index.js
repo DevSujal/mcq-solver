@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 import express from 'express';
+import cors from 'cors'
 import multer from 'multer';
 import { ImageRequestSchema } from './src/validators.js';
 import { processImage } from './src/pipeline.js';
@@ -10,6 +11,11 @@ import { errorShort } from './src/logger.js';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
 let reqCounter = 0;
 const app = express();
+
+app.use(cors({
+  origin: '*',
+  credentials: true
+}))
 // small middleware to add request ids and log incoming requests
 app.use((req, res, next) => {
   req.reqId = ++reqCounter;
