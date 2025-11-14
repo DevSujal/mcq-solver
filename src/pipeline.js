@@ -17,46 +17,22 @@ export async function processImage({ imageBuffer, debug = false, requestedModels
   
   // Place the main pipeline logic here as a function so we can race with the request timeout
   const mainFlow = async () => {
-    // 1. OCR with timeout guard
+    // 1. Extract MCQs directly from image using Gemini Vision (returns JSON array)
   const ocrPromise = (async () => {
     const t0 = Date.now();
-    const text = await extractTextFromImageBuffer(imageBuffer);
-    return text;
+    const mcqs = await extractTextFromImageBuffer(imageBuffer);
+    return mcqs;
   })();
-  let extractedText = null;
+  let mcqs = null;
   try {
-    extractedText = await Promise.race([ocrPromise, new Promise((_, reject) => setTimeout(() => reject(new Error('ocr_timeout')), OCR_TIMEOUT_MS))]);
-    console.log('✓ OCR complete: text extracted');
+    mcqs = await Promise.race([ocrPromise, new Promise((_, reject) => setTimeout(() => reject(new Error('ocr_timeout')), OCR_TIMEOUT_MS))]);
   } catch (err) {
     errorShort(reqId, 'OCR', `Failed: ${err.message}`, { err: err.message });
     return { error: 'ocr_failed', message: err.message };
   }
-    if (!extractedText || extractedText.trim().length === 0) {
-      return { error: 'No text detected in image', recommendation: 'Try higher resolution or re-take image with better lighting.' };
+    if (!mcqs || !Array.isArray(mcqs) || mcqs.length === 0) {
+      return { error: 'No complete questions detected in image', recommendation: 'Ensure image contains complete questions with all options visible.' };
     }
-
-  // 2. Parse MCQs via LLM-only parser (Cerebras Llama)
-  let mcqs = await parseMcqsFromText(extractedText, reqId);
-  // Fallback to model parsing if no MCQs detected
-  if (!mcqs || mcqs.length === 0) {
-    // Provide a callModel function that calls Geminis or Cerebras (we'll call Cerebras's small model by default if keys are present)
-    const callModel = async (prompt) => {
-      const modelList = ['cerebras:llama-3.3-70b']; // Use Cerebras Llama 3.3 70B for parsing
-      // Lazy-import to avoid cycles
-      const { callModelsForPrompt } = await import('./models/index.js');
-      const resp = await callModelsForPrompt({ prompt, modelList, reqId });
-      if (resp && resp[0] && resp[0].text) return resp[0].text;
-      return '';
-    };
-
-    mcqs = await parseWithLLM({ text: extractedText, callModel });
-  }
-
-  if (!Array.isArray(mcqs)) {
-    mcqs = [];
-  }
-
-  // No heuristic fallback: parsing must be done strictly by LLM (Cerebras Llama)
 
   // 3. Query models for each question
   // Use Cerebras as the primary model with higher weight, and call Gemini models once per question as validators
@@ -84,7 +60,6 @@ export async function processImage({ imageBuffer, debug = false, requestedModels
   }
 
     return {
-    originalText: extractedText,
     questions: results,
     metadata: { models: modelsToCall, timestamp: new Date().toISOString() },
     debug: debug ? { per_question_raw: results } : undefined
